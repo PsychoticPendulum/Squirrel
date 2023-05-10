@@ -28,7 +28,14 @@ except:
     Log(LVL.FAIL, "Library missing:    paho.mqtt")
 
 
+def Validate(minval,maxval,val):
+    return minval < val < maxval
+
+
 def SendToDatabase(value):
+    if not Validate(-32,64,int(value)):
+        Log(LVL.WARN, f"Value not plausible: {value}")
+        return
     db = MySQLdb.connect(host=host,user=user,password=password,db=database)
     cursor = db.cursor()
     query = f"INSERT INTO arduino (value, time) VALUES ({value}, CURRENT_TIME());"
@@ -43,9 +50,13 @@ def on_connect(client,userdata,flags,rc):
 
 
 def on_message(client,userdata,msg):
-    Log(LVL.INFO, f"Message recieved: {str(msg.payload.decode('utf-8'))}")
-    SendToDatabase(str(msg.payload.decode('utf-8')))
-    time.sleep(1) 
+    value = str(msg.payload.decode('utf-8'))
+    Log(LVL.INFO, f"Message recieved: {value}")
+    try:
+        SendToDatabase(int(value))
+    except ValueError:
+        Log(LVL.WARN, f"Invalid input: {value}")
+
 
 def ParseJSON(path):
     with open(path, "rb") as json_file:
