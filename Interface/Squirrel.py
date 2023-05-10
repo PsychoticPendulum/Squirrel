@@ -22,47 +22,51 @@ try:
 except:
     Log(LVL.FAIL, "Library missing:    mysql")
 
-def ParseJSON(path):
-    with open(path, "rb") as json_file:
-        json_data = json.load(json_file)
-        return json_data.get("host"), json_data.get("user"),base64.b64decode(json_data.get("pass")).decode("utf-8"), json_data.get("db"), json_data.get("broker"), json_data.get("topic")
+try:
+    import paho.mqtt.client as mqtt
+except:
+    Log(LVL.FAIL, "Library missing:    paho.mqtt")
 
-def GetInput(host, topic):
-    return os.popen(f"mosquitto_sub -C 1 -h {host} -t {topic}").read().rstrip('\n')
 
-def CheckDependencies():
-    if sys.platform == "win32":
-        Log(LVL.FAIL, "Windows is not yet supported")
-    else:
-        return os.popen("whereis mosquitto_sub > /dev/null ; echo $?").read().rstrip('\n')
-    return False
-
-def SendToDatabase(host, user, password, database):
+def SendToDatabase(value):
     db = MySQLdb.connect(host=host,user=user,password=password,db=database)
     cursor = db.cursor()
-    query = f"INSERT INTO arduino (value, time) VALUES ({VALUE}, CURRENT_TIME());"
+    query = f"INSERT INTO arduino (value, time) VALUES ({value}, CURRENT_TIME());"
     cursor.execute(query)
     db.commit()
     db.close()
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        Log(LVL.FAIL, "Not enough arguments")
-    path = sys.argv[1]
 
-    CheckDependencies()
+def on_connect(client,userdata,flags,rc):
+    Log(LVL.INFO, f"Connected to MQTT broker with response {rc}")
+    client.subscribe(f"{topic}")
 
-    host, user, password, database, broker, topic = ParseJSON(path)
 
-    while True:
-        try:
-            data = float(GetInput(broker,topic))
+def on_message(client,userdata,msg):
+    Log(LVL.INFO, f"Message recieved: {str(msg.payload.decode('utf-8'))}")
+    SendToDatabase(str(msg.payload.decode('utf-8')))
+    time.sleep(1) 
 
-        except KeyboardInterrupt:
-            Log(LVL.INFO, "Keyboard Interrupt detected. Ending execution")
-            exit(0)
+def ParseJSON(path):
+    with open(path, "rb") as json_file:
+        json_data = json.load(json_file)
+        return json_data.get("host"), json_data.get("user"),base64.b64decode(json_data.get("pass")).decode("utf-8"), json_data.get("db"), json_data.get("broker"), json_data.get("topic"), int(json_data.get("port")), int(json_data.get("ttl"))
 
-        except:
-            Log(LVL.WARN, "Value could not be parsed")
 
-        time.sleep(1)
+if len(sys.argv) < 2:
+    Log(LVL.FAIL, "Not enough arguments")
+
+host, user, password, database, broker, topic, port, ttl = ParseJSON(sys.argv[1])
+
+message_received = False
+
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
+print(broker)
+client.connect(broker,port,ttl)
+
+try:
+    client.loop_forever()
+except KeyboardInterrupt:
+    Log(LVL.WARN, "Keyboard Interrupt")
