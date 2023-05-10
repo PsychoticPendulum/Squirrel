@@ -32,9 +32,7 @@ void loop(void) {
 
   int temp = GetTemp();
   sprintf(msg,"%d",temp);
-  publish("temp/inside",msg);
-
-  delay(3600);
+  publish("dev/test",msg);
 
   client.loop();
 }
